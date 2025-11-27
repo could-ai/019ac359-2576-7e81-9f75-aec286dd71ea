@@ -1,0 +1,6 @@
+assets/
+  images/
+  icons/
+  fonts/
+    amiri.ttf
+    urdu.ttf

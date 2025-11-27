@@ -1,123 +1,251 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart' as intl;
+import 'package:uuid/uuid.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => AppState()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const MyHomePage(title: 'Flutter Demo Home Page'),
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        return MaterialApp(
+          title: 'الکتاب',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.light,
+            primarySwatch: Colors.indigo,
+            fontFamily: GoogleFonts.notoSansArabic().fontFamily,
+            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.dark,
+            primarySwatch: Colors.purple,
+            fontFamily: GoogleFonts.notoSansArabic().fontFamily,
+            scaffoldBackgroundColor: const Color(0xFF1A1A2E),
+          ),
+          themeMode: themeProvider.isDark ? ThemeMode.dark : ThemeMode.light,
+          initialRoute: '/',
+          routes: {
+            '/': (context) => const SplashScreen(),
+            '/home': (context) => const HomeScreen(),
+          },
+        );
       },
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
+// Theme Provider
+class ThemeProvider extends ChangeNotifier {
+  bool _isDark = true;
+  
+  bool get isDark => _isDark;
+  
+  ThemeProvider() {
+    _loadTheme();
+  }
+  
+  void _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    _isDark = prefs.getBool('is_dark') ?? true;
+    notifyListeners();
+  }
+  
+  void toggleTheme() async {
+    _isDark = !_isDark;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_dark', _isDark);
+    notifyListeners();
+  }
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+// App State
+class AppState extends ChangeNotifier {
+  String _selectedBabId = 'ism_e_zaat';
+  List<Message> _messages = [];
+  String _searchTerm = '';
+  String _statusMessage = '';
+  bool _showSplash = true;
+  
+  String get selectedBabId => _selectedBabId;
+  List<Message> get messages => _messages;
+  String get searchTerm => _searchTerm;
+  String get statusMessage => _statusMessage;
+  bool get showSplash => _showSplash;
+  
+  List<Message> get filteredMessages {
+    if (_searchTerm.isEmpty) return _messages;
+    return _messages.where((m) => 
+      m.text?.toLowerCase().contains(_searchTerm.toLowerCase()) ?? false
+    ).toList();
+  }
+  
+  AppState() {
+    _loadMessages();
+  }
+  
+  void _loadMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final messagesJson = prefs.getStringList('messages') ?? [];
+    _messages = messagesJson.map((json) => Message.fromJson(jsonDecode(json))).toList();
+    notifyListeners();
+  }
+  
+  void _saveMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final messagesJson = _messages.map((m) => jsonEncode(m.toJson())).toList();
+    await prefs.setStringList('messages', messagesJson);
+  }
+  
+  void setSelectedBab(String babId) {
+    _selectedBabId = babId;
+    _searchTerm = '';
+    notifyListeners();
+  }
+  
+  void setSearchTerm(String term) {
+    _searchTerm = term;
+    notifyListeners();
+  }
+  
+  void setStatusMessage(String message) {
+    _statusMessage = message;
+    notifyListeners();
+    Future.delayed(const Duration(seconds: 2), () {
+      _statusMessage = '';
+      notifyListeners();
     });
   }
-
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text('$_counter', style: Theme.of(context).textTheme.headlineMedium),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
+  
+  void hideSplash() {
+    _showSplash = false;
+    notifyListeners();
+  }
+  
+  void addMessage(Message message) {
+    _messages.insert(0, message);
+    _saveMessages();
+    notifyListeners();
+    setStatusMessage('پیغام بھیج دیا گیا!');
+  }
+  
+  void deleteMessage(String id) {
+    _messages.removeWhere((m) => m.id == id);
+    _saveMessages();
+    notifyListeners();
+    setStatusMessage('پیغام حذف ہو گیا');
   }
 }
+
+// Message Model
+class Message {
+  final String id;
+  final String? text;
+  final String? photoPath;
+  final String? audioPath;
+  final DateTime timestamp;
+  final String babId;
+  
+  Message({
+    required this.id,
+    this.text,
+    this.photoPath,
+    this.audioPath,
+    required this.timestamp,
+    required this.babId,
+  });
+  
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'text': text,
+    'photoPath': photoPath,
+    'audioPath': audioPath,
+    'timestamp': timestamp.toIso8601String(),
+    'babId': babId,
+  };
+  
+  factory Message.fromJson(Map<String, dynamic> json) => Message(
+    id: json['id'],
+    text: json['text'],
+    photoPath: json['photoPath'],
+    audioPath: json['audioPath'],
+    timestamp: DateTime.parse(json['timestamp']),
+    babId: json['babId'],
+  );
+}
+
+// Bab Structure
+const List<Map<String, dynamic>> babsStructure = [
+  {
+    'id': 'ism_e_zaat',
+    'name': 'اسم ذات',
+    'icon': '✨',
+    'gradient': [Colors.purple, Colors.pink],
+  },
+  {
+    'id': 'ayat_e_qutb',
+    'name': 'آیت قطب',
+    'icon': '⭐',
+    'gradient': [Colors.yellow, Colors.orange],
+  },
+  {
+    'id': 'wa_qul_jaa_al_haqq',
+    'name': 'و قل جاء الحق',
+    'icon': '🌟',
+    'gradient': [Colors.green, Colors.teal],
+  },
+  {
+    'id': 'takbir_e_tashreeq',
+    'name': 'تکبیر تشریق',
+    'icon': '🕌',
+    'gradient': [Colors.blue, Colors.cyan],
+  },
+  {
+    'id': 'chehel_kaaf',
+    'name': 'چہل کاف',
+    'icon': '📿',
+    'gradient': [Colors.indigo, Colors.purple],
+  },
+  {
+    'id': 'hizb_ul_bahr',
+    'name': 'حزب البحر',
+    'icon': '🌊',
+    'gradient': [Colors.cyan, Colors.blue],
+  },
+  {
+    'id': 'muawwizatain',
+    'name': 'معوذتین',
+    'icon': '🛡️',
+    'gradient': [Colors.emerald, Colors.green],
+  },
+  {
+    'id': 'surah_al_fatihah',
+    'name': 'سورۃ الفاتحہ',
+    'icon': '📖',
+    'gradient': [Colors.rose, Colors.pink],
+  },
+];
