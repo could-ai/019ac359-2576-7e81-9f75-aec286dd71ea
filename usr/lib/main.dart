@@ -11,6 +11,9 @@ import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'screens/splash_screen.dart';
+import 'screens/home_screen.dart';
+
 void main() {
   runApp(
     MultiProvider(
@@ -240,12 +243,12 @@ const List<Map<String, dynamic>> babsStructure = [
     'id': 'muawwizatain',
     'name': 'معوذتین',
     'icon': '🛡️',
-    'gradient': [Colors.emerald, Colors.green],
+    'gradient': [Color(0xFF10B981), Colors.green], // Replaced Colors.emerald
   },
   {
     'id': 'surah_al_fatihah',
     'name': 'سورۃ الفاتحہ',
     'icon': '📖',
-    'gradient': [Colors.rose, Colors.pink],
+    'gradient': [Color(0xFFF43F5E), Colors.pink], // Replaced Colors.rose
   },
 ];
